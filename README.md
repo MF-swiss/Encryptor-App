@@ -1,135 +1,125 @@
-# Encryptor / Decryptor
+# CryptoTool – Hybride Verschlüsselung in Java
 
-Dieses Projekt zeigt eine hybride Verschlüsselung:
+Kleine Java-Anwendung, die drei kryptographische Verfahren kombiniert:
 
-- Der Klartext wird mit **AES/CBC/PKCS5Padding** verschlüsselt.
-- Der AES-Schlüssel wird mit **RSA-OAEP (SHA-256)** und dem öffentlichen Schlüssel verschlüsselt.
-- Ein **SHA-256-Hash** des Klartexts dient zur Integritätsprüfung.
+| Verfahren | Algorithmus | Aufgabe |
+|---|---|---|
+| Symmetrische Verschlüsselung | AES-128 im CBC-Modus (PKCS5-Padding, zufälliger IV) | Verschlüsselt den Klartext |
+| Asymmetrische Verschlüsselung | RSA 2048 mit OAEP (SHA-256) | Verschlüsselt den AES-Schlüssel für den Empfänger |
+| Hashing | SHA-256 | Integritätsprüfung des Klartextes |
+
+Das Projekt entstand im Rahmen einer Schulaufgabe (Zweierteam: Person A verschlüsselt, Person B entschlüsselt).
+
+**Autoren:** _Name A_, _Name B_
+
+## Inhalt
+
+| Datei | Beschreibung |
+|---|---|
+| `CryptoGUI.java` | Fenster mit Eingabefeldern (empfohlen) |
+| `CryptoTool.java` | Konsolenversion mit Textmenü |
+| `Encryptor.java` / `Decryptor.java` | Optional: getrennte Kommandozeilen-Programme gemäss Aufgabenstellung |
 
 ## Voraussetzungen
 
-- JDK 8 oder neuer
-- `java` und `javac` müssen im PATH verfügbar sein
-- Ein RSA-Schlüsselpaar im PEM-Format:
-  - öffentlicher Schlüssel: `-----BEGIN PUBLIC KEY-----`
-  - privater Schlüssel: `-----BEGIN PRIVATE KEY-----`
+- JDK 11 oder neuer (`javac -version` prüfen)
+- Keine externen Bibliotheken nötig
 
-Die Programme erwarten daher PKCS#8-Private-Keys und X.509-Public-Keys.
+## Starten
 
-## 1. Schlüssel und AES-Schlüssel erzeugen
+```bash
+# Fenster-Version
+java CryptoGUI.java
 
-Die folgenden Befehle funktionieren in PowerShell. Im Projektordner werden ein
-RSA-Schlüsselpaar und ein zufälliger 256-Bit-AES-Schlüssel erzeugt:
-
-```powershell
-openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 -out private_key.pem
-openssl pkey -in private_key.pem -pubout -out public_key.pem
-$aesBytes = [byte[]]::new(32)
-[Security.Cryptography.RandomNumberGenerator]::Fill($aesBytes)
-$aesKey = [Convert]::ToBase64String($aesBytes)
+# Konsolen-Version
+java CryptoTool.java
 ```
 
-Den ausgegebenen Base64-Wert von `$aesKey` für den nächsten Schritt kopieren.
-Alternativ kann ein bereits vorhandener Base64-AES-Schlüssel mit 16, 24 oder
-32 Byte verwendet werden.
+Alternativ klassisch kompilieren:
 
-> **Hinweis:** Private Keys und AES-Schlüssel niemals veröffentlichen oder in
-> Git einchecken.
-
-## 2. Programme kompilieren
-
-```powershell
-New-Item -ItemType Directory -Force build
-javac -d build `
-  "Decryptor-App (Studierende)\Decryptor.java" `
-  "Encryptor-App (Studierende)\Encryptor.java"
+```bash
+javac CryptoGUI.java
+java CryptoGUI
 ```
 
-## 3. Text verschlüsseln
+## Ablauf
 
-`Encryptor` benötigt genau drei Argumente:
+### 1. Schlüsselpaar erzeugen (Person B, der Empfänger)
 
-```text
-Encryptor <Klartext> <Base64-AES-Schlüssel> <Pfad-zum-public-key.pem>
+Im Tab **Schlüssel** einen Namen eingeben (z. B. `marco`) und auf *Schlüsselpaar erzeugen* klicken. Es entstehen:
+
+- `marco_public.pem` – wird an Person A weitergegeben
+- `marco_private.pem` – bleibt **geheim** bei Person B
+
+### 2. Verschlüsseln (Person A)
+
+Tab **Verschlüsseln**:
+
+1. Klartext eingeben
+2. AES-Schlüssel eingeben oder mit *Zufällig* erzeugen (Base64, 16, 24 oder 32 Bytes)
+3. Pfad zum Public Key von Person B wählen
+4. *Verschlüsseln* klicken
+
+Ausgabe (alles Base64):
+
+- **Verschlüsselter Text** (die ersten 16 Bytes sind der IV)
+- **Verschlüsselter Schlüssel** (AES-Schlüssel, mit dem Public Key von B verschlüsselt)
+- **Hash** (SHA-256 des Klartextes)
+
+Diese drei Werte werden an Person B geschickt.
+
+### 3. Entschlüsseln (Person B)
+
+Tab **Entschlüsseln**:
+
+1. Die drei erhaltenen Werte in die Felder einfügen
+2. Pfad zum eigenen Private Key wählen
+3. *Entschlüsseln* klicken
+
+Der Ablauf im Programm:
+
+1. AES-Schlüssel mit dem Private Key entschlüsseln (RSA)
+2. Text mit dem AES-Schlüssel entschlüsseln
+3. SHA-256 vom Ergebnis berechnen und mit dem erhaltenen Hash vergleichen
+
+Stimmen die Hashes überein, wird der Klartext angezeigt. Andernfalls erscheint eine Fehlermeldung.
+
+## Eigene Keys mit ssh-keygen verwenden
+
+`ssh-keygen` erzeugt standardmässig das OpenSSH-Format, das Java nicht direkt lesen kann. Vor der Verwendung muss konvertiert werden:
+
+```bash
+# Keypair erzeugen (RSA, ohne Passphrase)
+ssh-keygen -t rsa -b 2048 -m PEM -f mykey -N ""
+
+# Public Key ins X.509-Format (PEM)
+ssh-keygen -e -m PKCS8 -f mykey.pub > mykey_public.pem
+
+# Private Key in PKCS8 umwandeln (überschreibt die Datei mykey)
+ssh-keygen -p -m PKCS8 -N "" -f mykey
 ```
 
-Beispiel:
+Erkennungszeichen: Der Public Key beginnt mit `-----BEGIN PUBLIC KEY-----`, der Private Key mit `-----BEGIN PRIVATE KEY-----`. Steht dort `OPENSSH` oder `RSA PRIVATE KEY`, ist das Format noch falsch.
 
-```powershell
-$encrypted = java -cp build Encryptor `
-  "Geheime Nachricht" `
-  $aesKey `
-  .\public_key.pem
-$encrypted
+Ein passender AES-Schlüssel (Base64, 16 Bytes) lässt sich so erzeugen:
+
+```bash
+openssl rand -base64 16
 ```
 
-Die Ausgabe enthält drei Werte:
+## Fehlerbehebung
 
-```text
-Encrypted text:          <BASE64_TEXT>
-Encrypted symmetric key: <BASE64_AES_KEY>
-Hash of plaintext:       <BASE64_HASH>
-```
+| Meldung / Problem | Ursache und Lösung |
+|---|---|
+| Key hat das ssh-keygen-Format | Key wie oben konvertieren oder im Tab *Schlüssel* neu erzeugen |
+| `Illegal base64 character` | Beim Einfügen wurde etwas abgeschnitten oder ein Zeichen verändert |
+| AES-Schlüssel muss 16, 24 oder 32 Bytes lang sein | Schlüssel mit *Zufällig* oder `openssl rand -base64 16` erzeugen |
+| `BadPaddingException` / `IllegalBlockSizeException` | Falscher Private Key oder veränderte Daten |
+| «Hash stimmt nicht überein» | Der Klartext wurde verändert, oder es wurde ein falscher Hash eingefügt |
 
-Für die Entschlüsselung die drei Base64-Werte separat kopieren. Leerzeichen
-zwischen Bezeichner und Wert gehören nicht zum jeweiligen Wert.
+## Sicherheitshinweise
 
-## 4. Text entschlüsseln
-
-`Decryptor` benötigt genau vier Argumente:
-
-```text
-Decryptor <Base64-verschlüsselter-Text> `
-          <Base64-verschlüsselter-AES-Schlüssel> `
-          <Base64-Hash> `
-          <Pfad-zum-private-key.pem>
-```
-
-Beispiel mit manuell eingesetzten Werten:
-
-```powershell
-java -cp build Decryptor `
-  "<BASE64_TEXT>" `
-  "<BASE64_AES_KEY>" `
-  "<BASE64_HASH>" `
-  .\private_key.pem
-```
-
-Bei erfolgreicher Prüfung erscheint:
-
-```text
-Hash OK. Klartext: Geheime Nachricht
-```
-
-Stimmt der Hash nicht überein, meldet das Programm:
-
-```text
-FEHLER: Hash stimmt nicht überein, Daten wurden verändert!
-```
-
-## Fehlercodes
-
-| Code | Bedeutung |
-| ---: | --- |
-| 0 | Erfolgreich |
-| 1 | Falsche Anzahl an Kommandozeilenargumenten |
-| 2 | Fehler beim Lesen, Decodieren oder Entschlüsseln |
-| 3 | Hashprüfung fehlgeschlagen |
-
-## Ablauf testen
-
-1. Beide Java-Dateien kompilieren.
-2. Einen kurzen Text mit `Encryptor` verschlüsseln.
-3. Die drei ausgegebenen Werte mit `Decryptor` entschlüsseln.
-4. Prüfen, dass der ursprüngliche Text ausgegeben wird.
-5. Einen einzelnen Wert absichtlich verändern und erneut entschlüsseln.
-   Erwartet wird ein Fehler (typischerweise Fehlercode 2 oder eine
-   fehlgeschlagene Hashprüfung).
-
-## Sicherheitshinweis
-
-AES-CBC mit einem separaten SHA-256-Hash ist nur eine Demonstration und kein
-modernes authentifiziertes Verschlüsselungsformat. Für produktive Anwendungen
-sollte ein AEAD-Verfahren wie **AES-GCM** verwendet werden. Außerdem sollten
-Schlüssel nicht als Kommandozeilenargumente übergeben werden, da diese in
-Prozesslisten oder Shell-Historien sichtbar sein können.
+- Der Private Key wird **nie** weitergegeben.
+- Ein zufälliger IV pro Verschlüsselung sorgt dafür, dass gleicher Klartext jedes Mal anders aussieht.
+- Der Hash allein schützt nur vor versehentlicher Veränderung. Ein Angreifer könnte Text und Hash gleichzeitig austauschen. Für echten Schutz braucht es eine digitale Signatur oder einen authentifizierten Modus wie AES-GCM.
+- Das Projekt ist für Lernzwecke gedacht und nicht für den produktiven Einsatz geprüft.
